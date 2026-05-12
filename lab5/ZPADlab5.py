@@ -1,88 +1,88 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import os
 
-# 1. Загрузка данных
+
 @st.cache_data
-def load_data():
-    # Файл должен быть в той же папке!
-    df = pd.read_csv('cleaned_vhi_data.csv')
+def load_data(file_path):
+    df = pd.read_csv(file_path)
+    # Перетворення типів (про всяк випадок)
+    df['Year'] = df['Year'].astype(int)
+    df['Week'] = df['Week'].astype(int)
     return df
 
-try:
-    df = load_data()
-except FileNotFoundError:
-    st.error("Файл 'cleaned_vhi_data.csv' не знайдено. Переконайся, що він у папці з кодом.")
+
+DATA_FILENAME = 'cleaned_vhi_data.csv'
+
+
+if not os.path.exists(DATA_FILENAME):
+    st.error(f"❌ Помилка: Файл '{DATA_FILENAME}' не знайдено!")
+    st.info(f"""
+    ### 🛠 Як виправити:
+    1. Запустіть скрипт очищення даних з **Лабораторної роботи №2**.
+    2. Отриманий файл `{DATA_FILENAME}` покладіть у папку з цим проєктом.
+    3. Оновіть цю сторінку.
+    """)
     st.stop()
 
-# --- ВЕРСТКА: КОЛОНКИ ---
-# Левая колонка для фильтров, Правая для контента
+df = load_data(DATA_FILENAME)
+
+
 col_sidebar, col_main = st.columns([1, 3])
 
 with col_sidebar:
-    st.header("Налаштування фільтрів")
+    st.header("⚙️ Фільтри")
     
-    # Выбор индекса
-    index_choice = st.selectbox("Оберіть часовий ряд:", ["VCI", "TCI", "VHI"])
+    index_choice = st.selectbox("Оберіть індекс:", ["VCI", "TCI", "VHI"])
+    region_choice = st.selectbox("Оберіть область:", sorted(df['Province'].unique()))
     
-    # Выбор области
-    region_choice = st.selectbox("Оберіть область:", df['Province'].unique())
-    
-    # Слайдеры интервалов
     week_range = st.slider("Інтервал тижнів:", 1, 52, (1, 52))
     
-    min_year = int(df['Year'].min())
-    max_year = int(df['Year'].max())
+    min_year, max_year = int(df['Year'].min()), int(df['Year'].max())
     year_range = st.slider("Інтервал років:", min_year, max_year, (min_year, max_year))
     
-    # Кнопка сброса
-    if st.button("Скинути всі фільтри"):
+    if st.button("🔄 Скинути фільтри"):
         st.rerun()
     
-    # Чекбоксы сортировки
     st.markdown("---")
-    sort_asc = st.checkbox("Сортувати за зростанням")
-    sort_desc = st.checkbox("Сортувати за спаданням")
-    
-    if sort_asc and sort_desc:
-        st.warning("⚠️ Оберіть тільки один тип сортування!")
+    sort_asc = st.checkbox("🔼 Сортувати за зростанням")
+    sort_desc = st.checkbox("🔽 Сортувати за спаданням")
 
-# --- ЛОГИКА ФИЛЬТРАЦИИ ---
+
 filtered_df = df[
     (df['Province'] == region_choice) &
     (df['Year'].between(year_range[0], year_range[1])) &
     (df['Week'].between(week_range[0], week_range[1]))
-]
+].copy()
 
-# Сортировка (если выбран один чекбокс)
 if sort_asc and not sort_desc:
     filtered_df = filtered_df.sort_values(by=index_choice, ascending=True)
 elif sort_desc and not sort_asc:
     filtered_df = filtered_df.sort_values(by=index_choice, ascending=False)
 
-# --- ВЕРСТКА: ПРАВАЯ ЧАСТЬ (ГРАФИКИ И ТАБЛИЦА) ---
+
 with col_main:
     st.title("🛰 Аналіз стану рослинності (VHI)")
     
-    tab1, tab2, tab3 = st.tabs(["📋 Таблиця", "📉 Графік часового ряду", "📊 Порівняння областей"])
+    tab1, tab2, tab3 = st.tabs(["📋 Таблиця", "📉 Динаміка", "📊 Порівняння"])
     
     with tab1:
-        st.subheader(f"Відфільтровані дані для: {region_choice}")
+        st.subheader(f"Дані для: {region_choice}")
         st.dataframe(filtered_df, use_container_width=True)
     
     with tab2:
-        st.subheader(f"Динаміка {index_choice} за обраний період")
+        st.subheader(f"Зміна {index_choice} у часі")
         fig1 = px.line(filtered_df, x="Year", y=index_choice, color="Week", 
-                      title=f"Зміна {index_choice} для {region_choice}")
+                      hover_data=["Week"], markers=True)
         st.plotly_chart(fig1, use_container_width=True)
         
     with tab3:
-        st.subheader("Порівняння області з іншими регіонами")
-        # Данные для сравнения (все области в тот же период)
+        st.subheader("Порівняння регіонів")
         comp_df = df[
             (df['Year'].between(year_range[0], year_range[1])) &
             (df['Week'].between(week_range[0], week_range[1]))
         ]
-        fig2 = px.line(comp_df, x="Year", y=index_choice, color="Province",
-                      title=f"Порівняння {index_choice} по областях")
+        fig2 = px.box(comp_df, x="Province", y=index_choice, color="Province",
+                      title=f"Розподіл {index_choice} по областях")
         st.plotly_chart(fig2, use_container_width=True)
